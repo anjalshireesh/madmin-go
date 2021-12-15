@@ -43,35 +43,33 @@ func (adm AdminClient) GetLogs(ctx context.Context, node string, lineCnt int, lo
 		urlValues.Set("node", node)
 		urlValues.Set("limit", strconv.Itoa(lineCnt))
 		urlValues.Set("logType", logKind)
+		reqData := requestData{
+			relPath:     adminAPIPrefix + "/log",
+			queryValues: urlValues,
+		}
+		// Execute GET to call log handler
+		resp, err := adm.executeMethod(ctx, http.MethodGet, reqData)
+		if err != nil {
+			closeResponse(resp)
+			return
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			logCh <- LogInfo{Err: httpRespToErrorResponse(resp)}
+			return
+		}
+		received := 0
+		dec := json.NewDecoder(resp.Body)
 		for {
-			reqData := requestData{
-				relPath:     adminAPIPrefix + "/log",
-				queryValues: urlValues,
+			var info LogInfo
+			if err = dec.Decode(&info); err != nil {
+				break
 			}
-			// Execute GET to call log handler
-			resp, err := adm.executeMethod(ctx, http.MethodGet, reqData)
-			if err != nil {
-				closeResponse(resp)
-				return
+			logCh <- info
+			received++
+			if received == lineCnt {
+				break
 			}
-
-			if resp.StatusCode != http.StatusOK {
-				logCh <- LogInfo{Err: httpRespToErrorResponse(resp)}
-				return
-			}
-			dec := json.NewDecoder(resp.Body)
-			for {
-				var info LogInfo
-				if err = dec.Decode(&info); err != nil {
-					break
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case logCh <- info:
-				}
-			}
-
 		}
 	}(logCh)
 
