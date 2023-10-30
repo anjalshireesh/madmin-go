@@ -57,19 +57,8 @@ type ReplicateAddStatus struct {
 	InitialSyncErrorMessage string `json:"initialSyncErrorMessage,omitempty"`
 }
 
-// SRAddOptions holds SR Add options
-type SRAddOptions struct {
-	ReplicateILMExpiry bool
-}
-
-func (o *SRAddOptions) getURLValues() url.Values {
-	urlValues := make(url.Values)
-	urlValues.Set("replicateILMExpiry", strconv.FormatBool(o.ReplicateILMExpiry))
-	return urlValues
-}
-
 // SiteReplicationAdd - sends the SR add API call.
-func (adm *AdminClient) SiteReplicationAdd(ctx context.Context, sites []PeerSite, opts SRAddOptions) (ReplicateAddStatus, error) {
+func (adm *AdminClient) SiteReplicationAdd(ctx context.Context, sites []PeerSite) (ReplicateAddStatus, error) {
 	sitesBytes, err := json.Marshal(sites)
 	if err != nil {
 		return ReplicateAddStatus{}, nil
@@ -79,7 +68,7 @@ func (adm *AdminClient) SiteReplicationAdd(ctx context.Context, sites []PeerSite
 		return ReplicateAddStatus{}, err
 	}
 
-	q := opts.getURLValues()
+	q := make(url.Values)
 	q.Set("api-version", SiteReplAPIVersion)
 
 	reqData := requestData{
@@ -117,7 +106,6 @@ type SiteReplicationInfo struct {
 	Name                    string     `json:"name,omitempty"`
 	Sites                   []PeerInfo `json:"sites,omitempty"`
 	ServiceAccountAccessKey string     `json:"serviceAccountAccessKey,omitempty"`
-	ReplicateILMExpiry      bool       `json:"replicate-ilm-expiry"`
 }
 
 // SiteReplicationInfo - returns cluster replication information.
@@ -433,7 +421,6 @@ const (
 	SRBucketMetaTypeObjectLockConfig = "object-lock-config"
 	SRBucketMetaTypeSSEConfig        = "sse-config"
 	SRBucketMetaTypeQuotaConfig      = "quota-config"
-	SRBucketMetaLCConfig             = "lc-config"
 )
 
 // SRBucketMeta - represents a bucket metadata change that will be copied to a peer.
@@ -461,15 +448,8 @@ type SRBucketMeta struct {
 	// Quota has a json representation use it as is.
 	Quota json.RawMessage `json:"quota,omitempty"`
 
-	// Since Expiry Lifecycle config does not have a json representation, we use its xml
-	// byte respresentation.
-	ExpiryLCConfig *string `json:"expLCConfig,omitempty"`
-
 	// UpdatedAt - timestamp of last update
 	UpdatedAt time.Time `json:"updatedAt,omitempty"`
-
-	// ExpiryUpdatedAt - timestamp of last update of expiry rule
-	ExpiryUpdatedAt time.Time `json:"expiryUpdatedAt,omitempty"`
 }
 
 // SRPeerReplicateBucketMeta - copies a bucket metadata change to a peer cluster.
@@ -526,10 +506,6 @@ type SRBucketInfo struct {
 	// quota config in json representation
 	QuotaConfig *string `json:"quotaConfig,omitempty"`
 
-	// Since Expiry Licfecycle config does not have a json representation, we use its xml
-	// byte representation
-	ExpiryLCConfig *string `json:"expLCConfig,omitempty"`
-
 	// time stamps of bucket metadata updates
 	PolicyUpdatedAt            time.Time `json:"policyTimestamp,omitempty"`
 	TagConfigUpdatedAt         time.Time `json:"tagTimestamp,omitempty"`
@@ -538,7 +514,6 @@ type SRBucketInfo struct {
 	VersioningConfigUpdatedAt  time.Time `json:"versioningTimestamp,omitempty"`
 	ReplicationConfigUpdatedAt time.Time `json:"replicationConfigTimestamp,omitempty"`
 	QuotaConfigUpdatedAt       time.Time `json:"quotaTimestamp,omitempty"`
-	ExpiryLCConfigUpdatedAt    time.Time `json:"expLCTimestamp,omitempty"`
 	CreatedAt                  time.Time `json:"bucketTimestamp,omitempty"`
 	DeletedAt                  time.Time `json:"bucketDeletedTimestamp,omitempty"`
 	Location                   string    `json:"location,omitempty"`
@@ -905,19 +880,8 @@ type ReplicateEditStatus struct {
 	ErrDetail string `json:"errorDetail,omitempty"`
 }
 
-// SREditOptions holds SR Edit options
-type SREditOptions struct {
-	DisableILMExpiryReplication bool
-}
-
-func (o *SREditOptions) getURLValues() url.Values {
-	urlValues := make(url.Values)
-	urlValues.Set("disableILMExpiryReplication", strconv.FormatBool(o.DisableILMExpiryReplication))
-	return urlValues
-}
-
 // SiteReplicationEdit - sends the SR edit API call.
-func (adm *AdminClient) SiteReplicationEdit(ctx context.Context, site PeerInfo, opts SREditOptions) (ReplicateEditStatus, error) {
+func (adm *AdminClient) SiteReplicationEdit(ctx context.Context, site PeerInfo) (ReplicateEditStatus, error) {
 	sitesBytes, err := json.Marshal(site)
 	if err != nil {
 		return ReplicateEditStatus{}, nil
@@ -927,7 +891,7 @@ func (adm *AdminClient) SiteReplicationEdit(ctx context.Context, site PeerInfo, 
 		return ReplicateEditStatus{}, err
 	}
 
-	q := opts.getURLValues()
+	q := make(url.Values)
 	q.Set("api-version", SiteReplAPIVersion)
 
 	reqData := requestData{
