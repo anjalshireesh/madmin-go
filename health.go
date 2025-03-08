@@ -39,6 +39,7 @@ import (
 
 	"github.com/minio/madmin-go/v3/cgroup"
 	"github.com/minio/madmin-go/v3/kernel"
+	"github.com/miniohq/license/go/license"
 	"github.com/prometheus/procfs"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -1048,6 +1049,7 @@ type ServerInfo struct {
 	GCStats        *GCStats          `json:"gc_stats,omitempty"`
 	MinioEnvVars   map[string]string `json:"minio_env_vars,omitempty"`
 	Edition        string            `json:"edition"`
+	License        *license.License  `json:"license,omitempty"`
 }
 
 // MinioInfo contains MinIO server and object storage information.
