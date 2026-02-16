@@ -235,6 +235,7 @@ type DriveResource struct {
 	InodesFree     uint64      `json:"inodesFree" msg:"if"`
 	InodesUsed     uint64      `json:"inodesUsed" msg:"iu"`
 	UUID           string      `json:"uuid" msg:"uid"`
+	FSType         string      `json:"fsType,omitempty" msg:"fst,omitempty"`
 	Metrics        *DiskMetric `json:"metrics,omitempty" msg:"m,omitempty"`
 }
 
@@ -254,6 +255,12 @@ type SMARTInfo struct {
 	MaxFailureRisk  float64 `json:"maxFailureRisk" msg:"mfr,omitempty"`   // Max estimated annual failure rate (0.0-1.0+)
 	MaxPowerOnHours float64 `json:"maxPowerOnHours" msg:"mpoh,omitempty"` // Max single drive power on hours
 	MaxPowerCycles  uint64  `json:"maxPowerCycles" msg:"mpc,omitempty"`   // Max single drive power cycles
+
+	// Device identification (only populated when N == 1)
+	DeviceType   string `json:"deviceType,omitempty" msg:"dt,omitempty"`
+	ModelNumber  string `json:"modelNumber,omitempty" msg:"mn,omitempty"`
+	SerialNumber string `json:"serialNumber,omitempty" msg:"sn,omitempty"`
+	FirmwareRev  string `json:"firmwareRev,omitempty" msg:"fwr,omitempty"`
 
 	NVMe *SMARTNVMe `json:"nvme,omitempty" msg:"nvme,omitempty"`
 	SATA *SMARTSATA `json:"sata,omitempty" msg:"sata,omitempty"`
