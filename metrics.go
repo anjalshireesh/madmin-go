@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"runtime/metrics"
@@ -752,6 +753,24 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 	}
 	if d.NDisks == 0 {
 		*d = *other
+		// Deep copy maps to avoid shared references that would be
+		// mutated by subsequent Merge calls.
+		if other.State != nil {
+			d.State = make(map[string]int, len(other.State))
+			maps.Copy(d.State, other.State)
+		}
+		if other.LifetimeOps != nil {
+			d.LifetimeOps = make(map[string]DiskAction, len(other.LifetimeOps))
+			maps.Copy(d.LifetimeOps, other.LifetimeOps)
+		}
+		if other.LastMinute != nil {
+			d.LastMinute = make(map[string]DiskAction, len(other.LastMinute))
+			maps.Copy(d.LastMinute, other.LastMinute)
+		}
+		if other.LastDaySegmented != nil {
+			d.LastDaySegmented = make(map[string]SegmentedDiskActions, len(other.LastDaySegmented))
+			maps.Copy(d.LastDaySegmented, other.LastDaySegmented)
+		}
 		return
 	}
 	if d.CollectedAt.Before(other.CollectedAt) {
