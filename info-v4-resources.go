@@ -215,6 +215,10 @@ type NodeResource struct {
 
 	// Metrics contains the metrics aggregated for node if requested.
 	Metrics *Metrics `json:"metrics,omitempty" msg:"m,omitempty"`
+
+	// Pre-computed percentage values for server-side filtering.
+	CpuPercent float64 `json:"cpuPercent" msg:"cpup"`
+	MemPercent float64 `json:"memPercent" msg:"memp"`
 }
 
 // DriveResource represents detailed information about a storage drive including capacity, usage, and metrics

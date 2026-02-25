@@ -4538,6 +4538,18 @@ func (z *NodeResource) DecodeMsg(dc *msgp.Reader) (err error) {
 				}
 			}
 			zb0001Mask |= 0x100
+		case "cpup":
+			z.CpuPercent, err = dc.ReadFloat64()
+			if err != nil {
+				err = msgp.WrapError(err, "CpuPercent")
+				return
+			}
+		case "memp":
+			z.MemPercent, err = dc.ReadFloat64()
+			if err != nil {
+				err = msgp.WrapError(err, "MemPercent")
+				return
+			}
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -4582,8 +4594,8 @@ func (z *NodeResource) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *NodeResource) EncodeMsg(en *msgp.Writer) (err error) {
 	// check for omitted fields
-	zb0001Len := uint32(18)
-	var zb0001Mask uint32 /* 18 bits */
+	zb0001Len := uint32(20)
+	var zb0001Mask uint32 /* 20 bits */
 	_ = zb0001Mask
 	if z.PID == 0 {
 		zb0001Len--
@@ -4867,6 +4879,26 @@ func (z *NodeResource) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
+		// write "cpup"
+		err = en.Append(0xa4, 0x63, 0x70, 0x75, 0x70)
+		if err != nil {
+			return
+		}
+		err = en.WriteFloat64(z.CpuPercent)
+		if err != nil {
+			err = msgp.WrapError(err, "CpuPercent")
+			return
+		}
+		// write "memp"
+		err = en.Append(0xa4, 0x6d, 0x65, 0x6d, 0x70)
+		if err != nil {
+			return
+		}
+		err = en.WriteFloat64(z.MemPercent)
+		if err != nil {
+			err = msgp.WrapError(err, "MemPercent")
+			return
+		}
 	}
 	return
 }
@@ -4875,8 +4907,8 @@ func (z *NodeResource) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *NodeResource) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// check for omitted fields
-	zb0001Len := uint32(18)
-	var zb0001Mask uint32 /* 18 bits */
+	zb0001Len := uint32(20)
+	var zb0001Mask uint32 /* 20 bits */
 	_ = zb0001Mask
 	if z.PID == 0 {
 		zb0001Len--
@@ -5026,6 +5058,12 @@ func (z *NodeResource) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
+		// string "cpup"
+		o = append(o, 0xa4, 0x63, 0x70, 0x75, 0x70)
+		o = msgp.AppendFloat64(o, z.CpuPercent)
+		// string "memp"
+		o = append(o, 0xa4, 0x6d, 0x65, 0x6d, 0x70)
+		o = msgp.AppendFloat64(o, z.MemPercent)
 	}
 	return
 }
@@ -5235,6 +5273,18 @@ func (z *NodeResource) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				}
 			}
 			zb0001Mask |= 0x100
+		case "cpup":
+			z.CpuPercent, bts, err = msgp.ReadFloat64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "CpuPercent")
+				return
+			}
+		case "memp":
+			z.MemPercent, bts, err = msgp.ReadFloat64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "MemPercent")
+				return
+			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -5304,6 +5354,7 @@ func (z *NodeResource) Msgsize() (s int) {
 	} else {
 		s += z.Metrics.Msgsize()
 	}
+	s += 5 + msgp.Float64Size + 5 + msgp.Float64Size
 	return
 }
 

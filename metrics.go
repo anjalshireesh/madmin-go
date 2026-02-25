@@ -696,6 +696,9 @@ type DiskMetric struct {
 
 	// SMART health data for the disk.
 	SMART *SMARTInfo `json:"smart,omitempty"`
+
+	// Filesystem type (e.g. "xfs", "ext4").
+	FSType string `json:"fsType,omitempty"`
 }
 
 type DriveHealInfo struct {
@@ -1285,6 +1288,42 @@ func (m *MemSegment) Add(other *MemSegment) {
 // SegmentedMemMetrics are time-segmented memory metrics.
 type SegmentedMemMetrics = Segmented[MemSegment, *MemSegment]
 
+// CPUSegment stores CPU time breakdown for a single time segment.
+type CPUSegment struct {
+	User      float64 `json:"user,omitempty"`
+	System    float64 `json:"system,omitempty"`
+	Idle      float64 `json:"idle,omitempty"`
+	Nice      float64 `json:"nice,omitempty"`
+	Iowait    float64 `json:"iowait,omitempty"`
+	Irq       float64 `json:"irq,omitempty"`
+	Softirq   float64 `json:"softirq,omitempty"`
+	Steal     float64 `json:"steal,omitempty"`
+	Guest     float64 `json:"guest,omitempty"`
+	GuestNice float64 `json:"guestNice,omitempty"`
+	N         int     `json:"n"`
+}
+
+// Add other to c for Segmenter interface.
+func (c *CPUSegment) Add(other *CPUSegment) {
+	if other == nil {
+		return
+	}
+	c.User += other.User
+	c.System += other.System
+	c.Idle += other.Idle
+	c.Nice += other.Nice
+	c.Iowait += other.Iowait
+	c.Irq += other.Irq
+	c.Softirq += other.Softirq
+	c.Steal += other.Steal
+	c.Guest += other.Guest
+	c.GuestNice += other.GuestNice
+	c.N += other.N
+}
+
+// SegmentedCPUMetrics are time-segmented CPU metrics.
+type SegmentedCPUMetrics = Segmented[CPUSegment, *CPUSegment]
+
 //msgp:replace cpu.TimesStat with:cpuTimesStat
 //msgp:replace load.AvgStat with:loadAvgStat
 
@@ -1299,6 +1338,8 @@ type CPUMetrics struct {
 	LoadStat      load.AvgStat  `json:"loadStat2"`
 	LoadStatCount int           `json:"loadCount,omitempty"`
 	CPUCount      int           `json:"cpuCount,omitempty"`
+
+	LastDay *SegmentedCPUMetrics `json:"lastDay,omitempty"`
 
 	// Aggregated CPU information
 	CPUByModel     map[string]int `json:"cpu_by_model,omitempty"`     // ModelName -> count of CPUs
@@ -1388,6 +1429,13 @@ func (m *CPUMetrics) Merge(other *CPUMetrics) {
 	}
 
 	m.FreqStatsCount += other.FreqStatsCount
+
+	if other.LastDay != nil {
+		if m.LastDay == nil {
+			m.LastDay = new(SegmentedCPUMetrics)
+		}
+		m.LastDay.Add(other.LastDay)
+	}
 }
 
 // RPCMetrics contains metrics for RPC operations.
