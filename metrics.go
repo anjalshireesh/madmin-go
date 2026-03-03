@@ -104,12 +104,13 @@ func (m MetricType) String() string {
 type MetricFlags uint64
 
 const (
-	MetricsDayStats     MetricFlags = 1 << (iota) // Include daily statistics
+	MetricsDayStats     MetricFlags = 1 << (iota) // Include daily statistics (24h, 15-min segments)
 	MetricsByHost                                 // Aggregate metrics by host/node.
 	MetricsByDisk                                 // Aggregate metrics by disk.
 	MetricsLegacyDiskIO                           // Add legacy disk IO metrics.
 	MetricsByDiskSet                              // Aggregate metrics by disk pool+set index.
 	MetricsSMART                                  // Include S.M.A.R.T. disk health data.
+	MetricsHourStats                              // Include last-hour statistics (1h, 1-min segments)
 )
 
 // Contains returns whether m contains all of x.
@@ -1133,6 +1134,9 @@ type NetMetrics struct {
 	// Last day delta statistics.
 	LastDay *SegmentedInterfaceStats `json:"last_day,omitempty"`
 
+	// Last hour delta statistics (1-min segments).
+	LastHour *SegmentedInterfaceStats `json:"last_hour,omitempty"`
+
 	// Deprecated: Does not merge.
 	InterfaceName string `json:"interfaceName"`
 
@@ -1161,6 +1165,10 @@ func (n *NetMetrics) Merge(other *NetMetrics) {
 		n.LastDay = new(SegmentedInterfaceStats)
 	}
 	n.LastDay.Add(other.LastDay)
+	if other.LastHour != nil && n.LastHour == nil {
+		n.LastHour = new(SegmentedInterfaceStats)
+	}
+	n.LastHour.Add(other.LastHour)
 	n.NetStats = procfs.NetDevLine(procfsNetDevLine(n.NetStats).add(procfsNetDevLine(other.NetStats)))
 }
 
@@ -1203,6 +1211,9 @@ type MemMetrics struct {
 	Info MemInfo `json:"memInfo"`
 
 	LastDay *SegmentedMemMetrics `json:"lastDay,omitempty"`
+
+	// Last hour statistics (1-min segments).
+	LastHour *SegmentedMemMetrics `json:"lastHour,omitempty"`
 }
 
 // Merge other into 'm'.
@@ -1221,6 +1232,12 @@ func (m *MemMetrics) Merge(other *MemMetrics) {
 			m.LastDay = new(SegmentedMemMetrics)
 		}
 		m.LastDay.Add(other.LastDay)
+	}
+	if other.LastHour != nil {
+		if m.LastHour == nil {
+			m.LastHour = new(SegmentedMemMetrics)
+		}
+		m.LastHour.Add(other.LastHour)
 	}
 }
 
@@ -1341,6 +1358,9 @@ type CPUMetrics struct {
 
 	LastDay *SegmentedCPUMetrics `json:"lastDay,omitempty"`
 
+	// Last hour statistics (1-min segments).
+	LastHour *SegmentedCPUMetrics `json:"lastHour,omitempty"`
+
 	// Aggregated CPU information
 	CPUByModel     map[string]int `json:"cpu_by_model,omitempty"`     // ModelName -> count of CPUs
 	TotalMhz       float64        `json:"total_mhz,omitempty"`        // Accumulated MHz
@@ -1435,6 +1455,12 @@ func (m *CPUMetrics) Merge(other *CPUMetrics) {
 			m.LastDay = new(SegmentedCPUMetrics)
 		}
 		m.LastDay.Add(other.LastDay)
+	}
+	if other.LastHour != nil {
+		if m.LastHour == nil {
+			m.LastHour = new(SegmentedCPUMetrics)
+		}
+		m.LastHour.Add(other.LastHour)
 	}
 }
 
@@ -1684,6 +1710,9 @@ type RuntimeMetrics struct {
 	N int `json:"n"`
 
 	LastDay *SegmentedRuntimeMetrics `json:"lastDay,omitempty"`
+
+	// Last hour statistics (1-min segments).
+	LastHour *SegmentedRuntimeMetrics `json:"lastHour,omitempty"`
 }
 
 // Merge other into 'm'.
@@ -1726,6 +1755,12 @@ func (m *RuntimeMetrics) Merge(other *RuntimeMetrics) {
 			m.LastDay = new(SegmentedRuntimeMetrics)
 		}
 		m.LastDay.Add(other.LastDay)
+	}
+	if other.LastHour != nil {
+		if m.LastHour == nil {
+			m.LastHour = new(SegmentedRuntimeMetrics)
+		}
+		m.LastHour.Add(other.LastHour)
 	}
 }
 
@@ -2357,6 +2392,9 @@ type ProcessMetrics struct {
 	MemMaps ProcessMemoryMaps `json:"mem_maps,omitempty"`
 
 	LastDay *SegmentedProcessMetrics `json:"lastDay,omitempty"`
+
+	// Last hour statistics (1-min segments).
+	LastHour *SegmentedProcessMetrics `json:"lastHour,omitempty"`
 }
 
 // ProcessMemoryInfo represents aggregated memory information
@@ -2511,6 +2549,12 @@ func (m *ProcessMetrics) Merge(other *ProcessMetrics) {
 			m.LastDay = new(SegmentedProcessMetrics)
 		}
 		m.LastDay.Add(other.LastDay)
+	}
+	if other.LastHour != nil {
+		if m.LastHour == nil {
+			m.LastHour = new(SegmentedProcessMetrics)
+		}
+		m.LastHour.Add(other.LastHour)
 	}
 }
 
