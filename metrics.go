@@ -1,20 +1,15 @@
+// MinIO, Inc. CONFIDENTIAL
 //
-// Copyright (c) 2015-2024 MinIO, Inc.
+// [2014] - [2026] MinIO, Inc. All Rights Reserved.
 //
-// This file is part of MinIO Object Storage stack
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as
-// published by the Free Software Foundation, either version 3 of the
-// License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program. If not, see <http://www.gnu.org/licenses/>.
+// NOTICE:  All information contained herein is, and remains the property
+// of MinIO, Inc and its suppliers, if any.  The intellectual and technical
+// concepts contained herein are proprietary to MinIO, Inc and its suppliers
+// and may be covered by U.S. and Foreign Patents, patents in process, and are
+// protected by trade secret or copyright law. Dissemination of this information
+// or reproduction of this material is strictly forbidden unless prior written
+// permission is obtained from MinIO, Inc.
+
 //
 
 package madmin
@@ -579,6 +574,43 @@ type DiskIOStats struct {
 	FlushTicks     uint64 `json:"flush_ticks,omitempty"`
 	BitrotDetected uint64 `json:"bitrot_detected,omitempty"`
 	BitrotHealed   uint64 `json:"bitrot_healed,omitempty"`
+
+	// Pre-computed rate fields. Not summed across drives; derived from raw counters.
+	ReadsPerSec    float64 `json:"reads_per_sec,omitempty"`
+	ReadsKBPerSec  float64 `json:"reads_kb_per_sec,omitempty"`
+	ReadsAwait     float64 `json:"reads_await,omitempty"`
+	WritesPerSec   float64 `json:"writes_per_sec,omitempty"`
+	WritesKBPerSec float64 `json:"writes_kb_per_sec,omitempty"`
+	WritesAwait    float64 `json:"writes_await,omitempty"`
+	PercUtil       float64 `json:"perc_util,omitempty"`
+}
+
+// UpdateMax updates each rate field to the element-wise maximum of d and other.
+func (d *DiskIOStats) UpdateMax(other *DiskIOStats) {
+	if other == nil {
+		return
+	}
+	if other.ReadsPerSec > d.ReadsPerSec {
+		d.ReadsPerSec = other.ReadsPerSec
+	}
+	if other.ReadsKBPerSec > d.ReadsKBPerSec {
+		d.ReadsKBPerSec = other.ReadsKBPerSec
+	}
+	if other.ReadsAwait > d.ReadsAwait {
+		d.ReadsAwait = other.ReadsAwait
+	}
+	if other.WritesPerSec > d.WritesPerSec {
+		d.WritesPerSec = other.WritesPerSec
+	}
+	if other.WritesKBPerSec > d.WritesKBPerSec {
+		d.WritesKBPerSec = other.WritesKBPerSec
+	}
+	if other.WritesAwait > d.WritesAwait {
+		d.WritesAwait = other.WritesAwait
+	}
+	if other.PercUtil > d.PercUtil {
+		d.PercUtil = other.PercUtil
+	}
 }
 
 type DiskIOStatsLegacy struct {
@@ -602,6 +634,58 @@ type DiskIOStatsLegacy struct {
 	FlushTicks     uint64 `json:"flush_ticks,omitempty"`
 	BitrotDetected uint64 `json:"bitrot_detected,omitempty"`
 	BitrotHealed   uint64 `json:"bitrot_healed,omitempty"`
+}
+
+// ToDiskIOStats converts the legacy stats to DiskIOStats, copying only the raw counter fields.
+func (d *DiskIOStatsLegacy) ToDiskIOStats() DiskIOStats {
+	return DiskIOStats{
+		N:              d.N,
+		ReadIOs:        d.ReadIOs,
+		ReadMerges:     d.ReadMerges,
+		ReadSectors:    d.ReadSectors,
+		ReadTicks:      d.ReadTicks,
+		WriteIOs:       d.WriteIOs,
+		WriteMerges:    d.WriteMerges,
+		WriteSectors:   d.WriteSectors,
+		WriteTicks:     d.WriteTicks,
+		CurrentIOs:     d.CurrentIOs,
+		TotalTicks:     d.TotalTicks,
+		ReqTicks:       d.ReqTicks,
+		DiscardIOs:     d.DiscardIOs,
+		DiscardMerges:  d.DiscardMerges,
+		DiscardSectors: d.DiscardSectors,
+		DiscardTicks:   d.DiscardTicks,
+		FlushIOs:       d.FlushIOs,
+		FlushTicks:     d.FlushTicks,
+		BitrotDetected: d.BitrotDetected,
+		BitrotHealed:   d.BitrotHealed,
+	}
+}
+
+// AsLegacy converts to DiskIOStatsLegacy, dropping rate fields.
+func (d DiskIOStats) AsLegacy() DiskIOStatsLegacy {
+	return DiskIOStatsLegacy{
+		N:              d.N,
+		ReadIOs:        d.ReadIOs,
+		ReadMerges:     d.ReadMerges,
+		ReadSectors:    d.ReadSectors,
+		ReadTicks:      d.ReadTicks,
+		WriteIOs:       d.WriteIOs,
+		WriteMerges:    d.WriteMerges,
+		WriteSectors:   d.WriteSectors,
+		WriteTicks:     d.WriteTicks,
+		CurrentIOs:     d.CurrentIOs,
+		TotalTicks:     d.TotalTicks,
+		ReqTicks:       d.ReqTicks,
+		DiscardIOs:     d.DiscardIOs,
+		DiscardMerges:  d.DiscardMerges,
+		DiscardSectors: d.DiscardSectors,
+		DiscardTicks:   d.DiscardTicks,
+		FlushIOs:       d.FlushIOs,
+		FlushTicks:     d.FlushTicks,
+		BitrotDetected: d.BitrotDetected,
+		BitrotHealed:   d.BitrotHealed,
+	}
 }
 
 // Add 'other' to 'd'.
@@ -635,6 +719,81 @@ type (
 	SegmentedDiskActions = Segmented[DiskAction, *DiskAction]
 	SegmentedDiskIO      = Segmented[DiskIOStats, *DiskIOStats]
 )
+
+// DiskIOWindow holds windowed IO stats with per-segment values and aggregate summary.
+type DiskIOWindow struct {
+	// Interval duration in seconds for each segment.
+	Interval int `json:"intervalSecs,omitempty"`
+
+	// FirstTime is the time of the first (oldest) segment.
+	FirstTime time.Time `json:"firstTime,omitempty"`
+
+	// Segments are the per-interval IO stats ordered by time (oldest first).
+	Segments []DiskIOStats `json:"segments,omitempty"`
+
+	// Avg contains mean rates across all segments (raw counters are totals).
+	Avg DiskIOStats `json:"avg"`
+
+	// Max contains peak rates across all segments.
+	Max DiskIOStats `json:"max"`
+}
+
+// Add merges other into d. Segments are merged by time-aligned index with raw
+// counters summed. Avg raw counters are summed. Max rate fields are element-wise maxed.
+func (d *DiskIOWindow) Add(other *DiskIOWindow) {
+	if other == nil || len(other.Segments) == 0 {
+		return
+	}
+	d.Avg.Add(&other.Avg)
+	d.Max.UpdateMax(&other.Max)
+
+	if len(d.Segments) == 0 {
+		d.Interval = other.Interval
+		d.FirstTime = other.FirstTime
+		d.Segments = append([]DiskIOStats{}, other.Segments...)
+		return
+	}
+	if other.Interval == 0 || d.Interval != other.Interval {
+		return
+	}
+	step := time.Duration(d.Interval) * time.Second
+
+	// Fast-path: same start time and same number of segments.
+	if d.FirstTime.Equal(other.FirstTime) && len(d.Segments) == len(other.Segments) {
+		for i := range d.Segments {
+			d.Segments[i].Add(&other.Segments[i])
+		}
+		return
+	}
+
+	start := d.FirstTime
+	if other.FirstTime.Before(start) {
+		start = other.FirstTime
+	}
+	dEnd := d.FirstTime.Add(time.Duration(len(d.Segments)) * step)
+	oEnd := other.FirstTime.Add(time.Duration(len(other.Segments)) * step)
+	totalSlots := int(oEnd.Sub(start) / step)
+	if dEnd.After(oEnd) {
+		totalSlots = int(dEnd.Sub(start) / step)
+	}
+	newSegments := make([]DiskIOStats, totalSlots)
+	if d.FirstTime.After(start) {
+		offset := int(d.FirstTime.Sub(start) / step)
+		copy(newSegments[offset:offset+len(d.Segments)], d.Segments)
+	} else {
+		copy(newSegments[:len(d.Segments)], d.Segments)
+	}
+	otherOffset := int(other.FirstTime.Sub(start) / step)
+	for i := range other.Segments {
+		idx := otherOffset + i
+		if idx < 0 || idx >= len(newSegments) {
+			continue
+		}
+		newSegments[idx].Add(&other.Segments[i])
+	}
+	d.FirstTime = start
+	d.Segments = newSegments
+}
 
 // DiskMetric contains metrics for one or more disks.
 type DiskMetric struct {
@@ -692,8 +851,11 @@ type DiskMetric struct {
 	// Rolling window last minute IO stats.
 	IOStatsMinute DiskIOStats `json:"io_min"`
 
-	// Rolling window daily IO stats.
-	IOStatsDay SegmentedDiskIO `json:"io_day"`
+	// Rolling window daily IO stats (15-minute segments).
+	IODay DiskIOWindow `json:"io_day"`
+
+	// Rolling window hourly IO stats (1-minute segments).
+	IOHour DiskIOWindow `json:"io_hour"`
 
 	// SMART health data for the disk.
 	SMART *SMARTInfo `json:"smart,omitempty"`
@@ -847,13 +1009,14 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 		if d.IOStats == nil {
 			d.IOStats = new(DiskIOStatsLegacy)
 		}
-		a, b := DiskIOStats(*d.IOStats), DiskIOStats(*other.IOStats)
+		a := d.IOStats.ToDiskIOStats()
+		b := other.IOStats.ToDiskIOStats()
 		a.Add(&b)
-		c := DiskIOStatsLegacy(a)
-		d.IOStats = &c
+		*d.IOStats = a.AsLegacy()
 	}
 	d.IOStatsMinute.Add(&other.IOStatsMinute)
-	d.IOStatsDay.Add(&other.IOStatsDay)
+	d.IODay.Add(&other.IODay)
+	d.IOHour.Add(&other.IOHour)
 	// Merge SMART data
 	if other.SMART != nil {
 		if d.SMART == nil {
