@@ -1377,6 +1377,13 @@ type MemMetrics struct {
 
 	// Last hour statistics (1-min segments).
 	LastHour *SegmentedMemMetrics `json:"lastHour,omitempty"`
+
+	// Pre-computed memory % aggregates for server-side sorting.
+	Percent        float64 `json:"percent,omitempty" msg:"p,omitempty"`
+	PercentHourAvg float64 `json:"percentHourAvg,omitempty" msg:"pha,omitempty"`
+	PercentHourMax float64 `json:"percentHourMax,omitempty" msg:"phm,omitempty"`
+	PercentDayAvg  float64 `json:"percentDayAvg,omitempty" msg:"pda,omitempty"`
+	PercentDayMax  float64 `json:"percentDayMax,omitempty" msg:"pdm,omitempty"`
 }
 
 // Merge other into 'm'.
@@ -1523,6 +1530,13 @@ type CPUMetrics struct {
 
 	// Last hour statistics (1-min segments).
 	LastHour *SegmentedCPUMetrics `json:"lastHour,omitempty"`
+
+	// Pre-computed CPU % aggregates for server-side sorting.
+	Percent        float64 `json:"percent,omitempty" msg:"p,omitempty"`
+	PercentHourAvg float64 `json:"percentHourAvg,omitempty" msg:"pha,omitempty"`
+	PercentHourMax float64 `json:"percentHourMax,omitempty" msg:"phm,omitempty"`
+	PercentDayAvg  float64 `json:"percentDayAvg,omitempty" msg:"pda,omitempty"`
+	PercentDayMax  float64 `json:"percentDayMax,omitempty" msg:"pdm,omitempty"`
 
 	// Aggregated CPU information
 	CPUByModel     map[string]int `json:"cpu_by_model,omitempty"`     // ModelName -> count of CPUs
@@ -2069,6 +2083,50 @@ func (a *APIStats) Merge(other APIStats) {
 // SegmentedAPIMetrics are segmented API metrics.
 type SegmentedAPIMetrics = Segmented[APIStats, *APIStats]
 
+// LastWindowAPIData holds time-segmented API metrics for a time window (hour or day),
+// along with pre-computed in/out byte aggregates for server-side sorting.
+type LastWindowAPIData struct {
+	// Per-API operation segmented metrics.
+	ByAPI map[string]SegmentedAPIMetrics `json:"byApi,omitempty" msg:"ba,omitempty"`
+
+	// Pre-computed HTTP byte aggregates.
+	InBytesAvg  uint64 `json:"inBytesAvg,omitempty" msg:"iba,omitempty"`
+	InBytesMax  uint64 `json:"inBytesMax,omitempty" msg:"ibm,omitempty"`
+	OutBytesAvg uint64 `json:"outBytesAvg,omitempty" msg:"oba,omitempty"`
+	OutBytesMax uint64 `json:"outBytesMax,omitempty" msg:"obm,omitempty"`
+}
+
+// Merge combines b into a.
+func (a *LastWindowAPIData) Merge(b *LastWindowAPIData) {
+	if b == nil {
+		return
+	}
+	for k, v := range b.ByAPI {
+		if a.ByAPI == nil {
+			a.ByAPI = make(map[string]SegmentedAPIMetrics, len(b.ByAPI))
+		}
+		existing, ok := a.ByAPI[k]
+		if !ok {
+			vCopy := v
+			if len(v.Segments) > 0 {
+				vCopy.Segments = append([]APIStats{}, v.Segments...)
+			}
+			a.ByAPI[k] = vCopy
+			continue
+		}
+		existing.Add(&v)
+		a.ByAPI[k] = existing
+	}
+	a.InBytesAvg += b.InBytesAvg
+	if b.InBytesMax > a.InBytesMax {
+		a.InBytesMax = b.InBytesMax
+	}
+	a.OutBytesAvg += b.OutBytesAvg
+	if b.OutBytesMax > a.OutBytesMax {
+		a.OutBytesMax = b.OutBytesMax
+	}
+}
+
 // APIMetrics contains metrics for API operations.
 type APIMetrics struct {
 	// Time these metrics were collected
@@ -2086,11 +2144,18 @@ type APIMetrics struct {
 	// Last minute operation statistics by API.
 	LastMinuteAPI map[string]APIStats `json:"lastMinuteApi,omitempty"`
 
-	// Last day operation statistics by API, segmented.
-	LastDayAPI map[string]SegmentedAPIMetrics `json:"lastDayApi,omitempty"`
+	// Last hour operation statistics by API, segmented (1-min intervals).
+	LastHourAPI *LastWindowAPIData `json:"lastHourApi,omitempty"`
+
+	// Last day operation statistics by API, segmented (15-min intervals).
+	LastDayAPI *LastWindowAPIData `json:"lastDayApi,omitempty"`
 
 	// SinceStart contains operation statistics since server(s) started.
 	SinceStart APIStats `json:"since_start"`
+
+	// Pre-computed HTTP byte totals over the last 1-min window, for server-side sorting.
+	InBytesLastMinute  uint64 `json:"inBytesLastMinute,omitempty" msg:"ibm,omitempty"`
+	OutBytesLastMinute uint64 `json:"outBytesLastMinute,omitempty" msg:"obm2,omitempty"`
 }
 
 func (a *APIMetrics) Merge(b *APIMetrics) {
@@ -2112,24 +2177,21 @@ func (a *APIMetrics) Merge(b *APIMetrics) {
 		existing.Merge(v)
 		a.LastMinuteAPI[k] = existing
 	}
-	for k, v := range b.LastDayAPI {
+	if b.LastHourAPI != nil {
+		if a.LastHourAPI == nil {
+			a.LastHourAPI = &LastWindowAPIData{}
+		}
+		a.LastHourAPI.Merge(b.LastHourAPI)
+	}
+	if b.LastDayAPI != nil {
 		if a.LastDayAPI == nil {
-			a.LastDayAPI = make(map[string]SegmentedAPIMetrics, len(b.LastDayAPI))
+			a.LastDayAPI = &LastWindowAPIData{}
 		}
-		existing, ok := a.LastDayAPI[k]
-		if !ok {
-			// Deep copy to avoid sharing slice references
-			vCopy := v
-			if len(v.Segments) > 0 {
-				vCopy.Segments = append([]APIStats{}, v.Segments...)
-			}
-			a.LastDayAPI[k] = vCopy
-			continue
-		}
-		existing.Add(&v)
-		a.LastDayAPI[k] = existing
+		a.LastDayAPI.Merge(b.LastDayAPI)
 	}
 	a.SinceStart.Merge(b.SinceStart)
+	a.InBytesLastMinute += b.InBytesLastMinute
+	a.OutBytesLastMinute += b.OutBytesLastMinute
 }
 
 // LastMinuteTotal returns the total APIStats for the last minute.
@@ -2147,8 +2209,10 @@ func (a APIMetrics) LastMinuteTotal() APIStats {
 // There will be no node-count for values.
 func (a APIMetrics) LastDayTotalSegmented() SegmentedAPIMetrics {
 	var res SegmentedAPIMetrics
-	for _, stats := range a.LastDayAPI {
-		res.Add(&stats)
+	if a.LastDayAPI != nil {
+		for _, stats := range a.LastDayAPI.ByAPI {
+			res.Add(&stats)
+		}
 	}
 	// Since we are merging across APIs must reset track node count.
 	for i := range res.Segments {
@@ -2160,9 +2224,11 @@ func (a APIMetrics) LastDayTotalSegmented() SegmentedAPIMetrics {
 // LastDayTotal returns the accumulated APIStats for the last day.
 func (a APIMetrics) LastDayTotal() APIStats {
 	var res APIStats
-	for _, stats := range a.LastDayAPI {
-		for _, s := range stats.Segments {
-			res.Merge(s)
+	if a.LastDayAPI != nil {
+		for _, stats := range a.LastDayAPI.ByAPI {
+			for _, s := range stats.Segments {
+				res.Merge(s)
+			}
 		}
 	}
 	// Since we are merging across APIs must reset track node count.
