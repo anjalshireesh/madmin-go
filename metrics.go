@@ -826,6 +826,10 @@ type DiskMetric struct {
 	// Deprecated, will be removed in later releases
 	Healing int `json:"healing,omitempty"`
 
+	// BitrotDrives is the number of drives with at least one bitrot event in
+	// the last minute.
+	BitrotDrives int `json:"bitrot_drives,omitempty"`
+
 	// HealingInfo gives us a high level overview of the drives healing state
 	HealingInfo *DriveHealInfo `json:"healingInfo,omitempty"`
 
@@ -970,6 +974,7 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 	d.NDisks += other.NDisks
 	d.Offline += other.Offline
 	d.Healing += other.Healing
+	d.BitrotDrives += other.BitrotDrives
 	d.Hanging += other.Hanging
 	if other.Cache != nil {
 		if d.Cache == nil {
@@ -2083,10 +2088,10 @@ func (a *APIStats) Merge(other APIStats) {
 // SegmentedAPIMetrics are segmented API metrics.
 type SegmentedAPIMetrics = Segmented[APIStats, *APIStats]
 
-// LastWindowAPIData holds time-segmented API metrics for a time window (hour or day),
-// along with pre-computed in/out byte aggregates for server-side sorting.
+// LastWindowAPIData holds time-segmented API metrics for a time window (minute, hour or day),
+// along with pre-computed aggregates for server-side sorting.
 type LastWindowAPIData struct {
-	// Per-API operation segmented metrics.
+	// Per-API operation segmented metrics (nil for the 1-min window).
 	ByAPI map[string]SegmentedAPIMetrics `json:"byApi,omitempty" msg:"ba,omitempty"`
 
 	// Pre-computed HTTP byte aggregates.
@@ -2094,6 +2099,10 @@ type LastWindowAPIData struct {
 	InBytesMax  uint64 `json:"inBytesMax,omitempty" msg:"ibm,omitempty"`
 	OutBytesAvg uint64 `json:"outBytesAvg,omitempty" msg:"oba,omitempty"`
 	OutBytesMax uint64 `json:"outBytesMax,omitempty" msg:"obm,omitempty"`
+
+	// Pre-computed request count aggregates.
+	RequestsAvg int64 `json:"requestsAvg,omitempty" msg:"ra,omitempty"`
+	RequestsMax int64 `json:"requestsMax,omitempty" msg:"rm,omitempty"`
 }
 
 // Merge combines b into a.
@@ -2125,6 +2134,10 @@ func (a *LastWindowAPIData) Merge(b *LastWindowAPIData) {
 	if b.OutBytesMax > a.OutBytesMax {
 		a.OutBytesMax = b.OutBytesMax
 	}
+	a.RequestsAvg += b.RequestsAvg
+	if b.RequestsMax > a.RequestsMax {
+		a.RequestsMax = b.RequestsMax
+	}
 }
 
 // APIMetrics contains metrics for API operations.
@@ -2142,7 +2155,10 @@ type APIMetrics struct {
 	QueuedRequests int64 `json:"queuedRequests,omitempty"`
 
 	// Last minute operation statistics by API.
-	LastMinuteAPI map[string]APIStats `json:"lastMinuteApi,omitempty"`
+	LastMinuteAPI map[string]APIStats `json:"lastMinuteByApi,omitempty"`
+
+	// Pre-computed aggregates for the last 1-min window, for server-side sorting.
+	LastMinuteAgg *LastWindowAPIData `json:"lastMinuteApi,omitempty" msg:"lma,omitempty"`
 
 	// Last hour operation statistics by API, segmented (1-min intervals).
 	LastHourAPI *LastWindowAPIData `json:"lastHourApi,omitempty"`
@@ -2152,10 +2168,6 @@ type APIMetrics struct {
 
 	// SinceStart contains operation statistics since server(s) started.
 	SinceStart APIStats `json:"since_start"`
-
-	// Pre-computed HTTP byte totals over the last 1-min window, for server-side sorting.
-	InBytesLastMinute  uint64 `json:"inBytesLastMinute,omitempty" msg:"ibm,omitempty"`
-	OutBytesLastMinute uint64 `json:"outBytesLastMinute,omitempty" msg:"obm2,omitempty"`
 }
 
 func (a *APIMetrics) Merge(b *APIMetrics) {
@@ -2177,6 +2189,12 @@ func (a *APIMetrics) Merge(b *APIMetrics) {
 		existing.Merge(v)
 		a.LastMinuteAPI[k] = existing
 	}
+	if b.LastMinuteAgg != nil {
+		if a.LastMinuteAgg == nil {
+			a.LastMinuteAgg = &LastWindowAPIData{}
+		}
+		a.LastMinuteAgg.Merge(b.LastMinuteAgg)
+	}
 	if b.LastHourAPI != nil {
 		if a.LastHourAPI == nil {
 			a.LastHourAPI = &LastWindowAPIData{}
@@ -2190,8 +2208,6 @@ func (a *APIMetrics) Merge(b *APIMetrics) {
 		a.LastDayAPI.Merge(b.LastDayAPI)
 	}
 	a.SinceStart.Merge(b.SinceStart)
-	a.InBytesLastMinute += b.InBytesLastMinute
-	a.OutBytesLastMinute += b.OutBytesLastMinute
 }
 
 // LastMinuteTotal returns the total APIStats for the last minute.

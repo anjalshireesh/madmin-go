@@ -19,7 +19,7 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 		err = msgp.WrapError(err)
 		return
 	}
-	var zb0001Mask uint8 /* 7 bits */
+	var zb0001Mask uint8 /* 6 bits */
 	_ = zb0001Mask
 	for zb0001 > 0 {
 		zb0001--
@@ -55,7 +55,7 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 				return
 			}
 			zb0001Mask |= 0x2
-		case "lastMinuteApi":
+		case "lastMinuteByApi":
 			var zb0002 uint32
 			zb0002, err = dc.ReadMapHeader()
 			if err != nil {
@@ -84,6 +84,25 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 				z.LastMinuteAPI[za0001] = za0002
 			}
 			zb0001Mask |= 0x4
+		case "lastMinuteApi":
+			if dc.IsNil() {
+				err = dc.ReadNil()
+				if err != nil {
+					err = msgp.WrapError(err, "LastMinuteAgg")
+					return
+				}
+				z.LastMinuteAgg = nil
+			} else {
+				if z.LastMinuteAgg == nil {
+					z.LastMinuteAgg = new(LastWindowAPIData)
+				}
+				err = z.LastMinuteAgg.DecodeMsg(dc)
+				if err != nil {
+					err = msgp.WrapError(err, "LastMinuteAgg")
+					return
+				}
+			}
+			zb0001Mask |= 0x8
 		case "lastHourApi":
 			if dc.IsNil() {
 				err = dc.ReadNil()
@@ -102,7 +121,7 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x8
+			zb0001Mask |= 0x10
 		case "lastDayApi":
 			if dc.IsNil() {
 				err = dc.ReadNil()
@@ -121,27 +140,13 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x10
+			zb0001Mask |= 0x20
 		case "since_start":
 			err = z.SinceStart.DecodeMsg(dc)
 			if err != nil {
 				err = msgp.WrapError(err, "SinceStart")
 				return
 			}
-		case "inBytesLastMinute":
-			z.InBytesLastMinute, err = dc.ReadUint64()
-			if err != nil {
-				err = msgp.WrapError(err, "InBytesLastMinute")
-				return
-			}
-			zb0001Mask |= 0x20
-		case "outBytesLastMinute":
-			z.OutBytesLastMinute, err = dc.ReadUint64()
-			if err != nil {
-				err = msgp.WrapError(err, "OutBytesLastMinute")
-				return
-			}
-			zb0001Mask |= 0x40
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -151,7 +156,7 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 		}
 	}
 	// Clear omitted fields.
-	if zb0001Mask != 0x7f {
+	if zb0001Mask != 0x3f {
 		if (zb0001Mask & 0x1) == 0 {
 			z.ActiveRequests = 0
 		}
@@ -162,16 +167,13 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 			z.LastMinuteAPI = nil
 		}
 		if (zb0001Mask & 0x8) == 0 {
-			z.LastHourAPI = nil
+			z.LastMinuteAgg = nil
 		}
 		if (zb0001Mask & 0x10) == 0 {
-			z.LastDayAPI = nil
+			z.LastHourAPI = nil
 		}
 		if (zb0001Mask & 0x20) == 0 {
-			z.InBytesLastMinute = 0
-		}
-		if (zb0001Mask & 0x40) == 0 {
-			z.OutBytesLastMinute = 0
+			z.LastDayAPI = nil
 		}
 	}
 	return
@@ -180,8 +182,8 @@ func (z *APIMetrics) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 	// check for omitted fields
-	zb0001Len := uint32(10)
-	var zb0001Mask uint16 /* 10 bits */
+	zb0001Len := uint32(9)
+	var zb0001Mask uint16 /* 9 bits */
 	_ = zb0001Mask
 	if z.ActiveRequests == 0 {
 		zb0001Len--
@@ -195,21 +197,17 @@ func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 		zb0001Len--
 		zb0001Mask |= 0x10
 	}
-	if z.LastHourAPI == nil {
+	if z.LastMinuteAgg == nil {
 		zb0001Len--
 		zb0001Mask |= 0x20
 	}
-	if z.LastDayAPI == nil {
+	if z.LastHourAPI == nil {
 		zb0001Len--
 		zb0001Mask |= 0x40
 	}
-	if z.InBytesLastMinute == 0 {
+	if z.LastDayAPI == nil {
 		zb0001Len--
-		zb0001Mask |= 0x100
-	}
-	if z.OutBytesLastMinute == 0 {
-		zb0001Len--
-		zb0001Mask |= 0x200
+		zb0001Mask |= 0x80
 	}
 	// variable map header, size zb0001Len
 	err = en.Append(0x80 | uint8(zb0001Len))
@@ -264,8 +262,8 @@ func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 		if (zb0001Mask & 0x10) == 0 { // if not omitted
-			// write "lastMinuteApi"
-			err = en.Append(0xad, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65, 0x41, 0x70, 0x69)
+			// write "lastMinuteByApi"
+			err = en.Append(0xaf, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65, 0x42, 0x79, 0x41, 0x70, 0x69)
 			if err != nil {
 				return
 			}
@@ -288,6 +286,25 @@ func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 		if (zb0001Mask & 0x20) == 0 { // if not omitted
+			// write "lastMinuteApi"
+			err = en.Append(0xad, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65, 0x41, 0x70, 0x69)
+			if err != nil {
+				return
+			}
+			if z.LastMinuteAgg == nil {
+				err = en.WriteNil()
+				if err != nil {
+					return
+				}
+			} else {
+				err = z.LastMinuteAgg.EncodeMsg(en)
+				if err != nil {
+					err = msgp.WrapError(err, "LastMinuteAgg")
+					return
+				}
+			}
+		}
+		if (zb0001Mask & 0x40) == 0 { // if not omitted
 			// write "lastHourApi"
 			err = en.Append(0xab, 0x6c, 0x61, 0x73, 0x74, 0x48, 0x6f, 0x75, 0x72, 0x41, 0x70, 0x69)
 			if err != nil {
@@ -306,7 +323,7 @@ func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x40) == 0 { // if not omitted
+		if (zb0001Mask & 0x80) == 0 { // if not omitted
 			// write "lastDayApi"
 			err = en.Append(0xaa, 0x6c, 0x61, 0x73, 0x74, 0x44, 0x61, 0x79, 0x41, 0x70, 0x69)
 			if err != nil {
@@ -335,30 +352,6 @@ func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 			err = msgp.WrapError(err, "SinceStart")
 			return
 		}
-		if (zb0001Mask & 0x100) == 0 { // if not omitted
-			// write "inBytesLastMinute"
-			err = en.Append(0xb1, 0x69, 0x6e, 0x42, 0x79, 0x74, 0x65, 0x73, 0x4c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65)
-			if err != nil {
-				return
-			}
-			err = en.WriteUint64(z.InBytesLastMinute)
-			if err != nil {
-				err = msgp.WrapError(err, "InBytesLastMinute")
-				return
-			}
-		}
-		if (zb0001Mask & 0x200) == 0 { // if not omitted
-			// write "outBytesLastMinute"
-			err = en.Append(0xb2, 0x6f, 0x75, 0x74, 0x42, 0x79, 0x74, 0x65, 0x73, 0x4c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65)
-			if err != nil {
-				return
-			}
-			err = en.WriteUint64(z.OutBytesLastMinute)
-			if err != nil {
-				err = msgp.WrapError(err, "OutBytesLastMinute")
-				return
-			}
-		}
 	}
 	return
 }
@@ -367,8 +360,8 @@ func (z *APIMetrics) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *APIMetrics) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// check for omitted fields
-	zb0001Len := uint32(10)
-	var zb0001Mask uint16 /* 10 bits */
+	zb0001Len := uint32(9)
+	var zb0001Mask uint16 /* 9 bits */
 	_ = zb0001Mask
 	if z.ActiveRequests == 0 {
 		zb0001Len--
@@ -382,21 +375,17 @@ func (z *APIMetrics) MarshalMsg(b []byte) (o []byte, err error) {
 		zb0001Len--
 		zb0001Mask |= 0x10
 	}
-	if z.LastHourAPI == nil {
+	if z.LastMinuteAgg == nil {
 		zb0001Len--
 		zb0001Mask |= 0x20
 	}
-	if z.LastDayAPI == nil {
+	if z.LastHourAPI == nil {
 		zb0001Len--
 		zb0001Mask |= 0x40
 	}
-	if z.InBytesLastMinute == 0 {
+	if z.LastDayAPI == nil {
 		zb0001Len--
-		zb0001Mask |= 0x100
-	}
-	if z.OutBytesLastMinute == 0 {
-		zb0001Len--
-		zb0001Mask |= 0x200
+		zb0001Mask |= 0x80
 	}
 	// variable map header, size zb0001Len
 	o = append(o, 0x80|uint8(zb0001Len))
@@ -420,8 +409,8 @@ func (z *APIMetrics) MarshalMsg(b []byte) (o []byte, err error) {
 			o = msgp.AppendInt64(o, z.QueuedRequests)
 		}
 		if (zb0001Mask & 0x10) == 0 { // if not omitted
-			// string "lastMinuteApi"
-			o = append(o, 0xad, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65, 0x41, 0x70, 0x69)
+			// string "lastMinuteByApi"
+			o = append(o, 0xaf, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65, 0x42, 0x79, 0x41, 0x70, 0x69)
 			o = msgp.AppendMapHeader(o, uint32(len(z.LastMinuteAPI)))
 			for za0001, za0002 := range z.LastMinuteAPI {
 				o = msgp.AppendString(o, za0001)
@@ -433,6 +422,19 @@ func (z *APIMetrics) MarshalMsg(b []byte) (o []byte, err error) {
 			}
 		}
 		if (zb0001Mask & 0x20) == 0 { // if not omitted
+			// string "lastMinuteApi"
+			o = append(o, 0xad, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65, 0x41, 0x70, 0x69)
+			if z.LastMinuteAgg == nil {
+				o = msgp.AppendNil(o)
+			} else {
+				o, err = z.LastMinuteAgg.MarshalMsg(o)
+				if err != nil {
+					err = msgp.WrapError(err, "LastMinuteAgg")
+					return
+				}
+			}
+		}
+		if (zb0001Mask & 0x40) == 0 { // if not omitted
 			// string "lastHourApi"
 			o = append(o, 0xab, 0x6c, 0x61, 0x73, 0x74, 0x48, 0x6f, 0x75, 0x72, 0x41, 0x70, 0x69)
 			if z.LastHourAPI == nil {
@@ -445,7 +447,7 @@ func (z *APIMetrics) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x40) == 0 { // if not omitted
+		if (zb0001Mask & 0x80) == 0 { // if not omitted
 			// string "lastDayApi"
 			o = append(o, 0xaa, 0x6c, 0x61, 0x73, 0x74, 0x44, 0x61, 0x79, 0x41, 0x70, 0x69)
 			if z.LastDayAPI == nil {
@@ -465,16 +467,6 @@ func (z *APIMetrics) MarshalMsg(b []byte) (o []byte, err error) {
 			err = msgp.WrapError(err, "SinceStart")
 			return
 		}
-		if (zb0001Mask & 0x100) == 0 { // if not omitted
-			// string "inBytesLastMinute"
-			o = append(o, 0xb1, 0x69, 0x6e, 0x42, 0x79, 0x74, 0x65, 0x73, 0x4c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65)
-			o = msgp.AppendUint64(o, z.InBytesLastMinute)
-		}
-		if (zb0001Mask & 0x200) == 0 { // if not omitted
-			// string "outBytesLastMinute"
-			o = append(o, 0xb2, 0x6f, 0x75, 0x74, 0x42, 0x79, 0x74, 0x65, 0x73, 0x4c, 0x61, 0x73, 0x74, 0x4d, 0x69, 0x6e, 0x75, 0x74, 0x65)
-			o = msgp.AppendUint64(o, z.OutBytesLastMinute)
-		}
 	}
 	return
 }
@@ -489,7 +481,7 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		err = msgp.WrapError(err)
 		return
 	}
-	var zb0001Mask uint8 /* 7 bits */
+	var zb0001Mask uint8 /* 6 bits */
 	_ = zb0001Mask
 	for zb0001 > 0 {
 		zb0001--
@@ -525,7 +517,7 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				return
 			}
 			zb0001Mask |= 0x2
-		case "lastMinuteApi":
+		case "lastMinuteByApi":
 			var zb0002 uint32
 			zb0002, bts, err = msgp.ReadMapHeaderBytes(bts)
 			if err != nil {
@@ -554,6 +546,24 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				z.LastMinuteAPI[za0001] = za0002
 			}
 			zb0001Mask |= 0x4
+		case "lastMinuteApi":
+			if msgp.IsNil(bts) {
+				bts, err = msgp.ReadNilBytes(bts)
+				if err != nil {
+					return
+				}
+				z.LastMinuteAgg = nil
+			} else {
+				if z.LastMinuteAgg == nil {
+					z.LastMinuteAgg = new(LastWindowAPIData)
+				}
+				bts, err = z.LastMinuteAgg.UnmarshalMsg(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "LastMinuteAgg")
+					return
+				}
+			}
+			zb0001Mask |= 0x8
 		case "lastHourApi":
 			if msgp.IsNil(bts) {
 				bts, err = msgp.ReadNilBytes(bts)
@@ -571,7 +581,7 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x8
+			zb0001Mask |= 0x10
 		case "lastDayApi":
 			if msgp.IsNil(bts) {
 				bts, err = msgp.ReadNilBytes(bts)
@@ -589,27 +599,13 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x10
+			zb0001Mask |= 0x20
 		case "since_start":
 			bts, err = z.SinceStart.UnmarshalMsg(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "SinceStart")
 				return
 			}
-		case "inBytesLastMinute":
-			z.InBytesLastMinute, bts, err = msgp.ReadUint64Bytes(bts)
-			if err != nil {
-				err = msgp.WrapError(err, "InBytesLastMinute")
-				return
-			}
-			zb0001Mask |= 0x20
-		case "outBytesLastMinute":
-			z.OutBytesLastMinute, bts, err = msgp.ReadUint64Bytes(bts)
-			if err != nil {
-				err = msgp.WrapError(err, "OutBytesLastMinute")
-				return
-			}
-			zb0001Mask |= 0x40
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -619,7 +615,7 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 	}
 	// Clear omitted fields.
-	if zb0001Mask != 0x7f {
+	if zb0001Mask != 0x3f {
 		if (zb0001Mask & 0x1) == 0 {
 			z.ActiveRequests = 0
 		}
@@ -630,16 +626,13 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			z.LastMinuteAPI = nil
 		}
 		if (zb0001Mask & 0x8) == 0 {
-			z.LastHourAPI = nil
+			z.LastMinuteAgg = nil
 		}
 		if (zb0001Mask & 0x10) == 0 {
-			z.LastDayAPI = nil
+			z.LastHourAPI = nil
 		}
 		if (zb0001Mask & 0x20) == 0 {
-			z.InBytesLastMinute = 0
-		}
-		if (zb0001Mask & 0x40) == 0 {
-			z.OutBytesLastMinute = 0
+			z.LastDayAPI = nil
 		}
 	}
 	o = bts
@@ -648,12 +641,18 @@ func (z *APIMetrics) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *APIMetrics) Msgsize() (s int) {
-	s = 1 + 10 + msgp.TimeSize + 6 + msgp.IntSize + 15 + msgp.Int64Size + 15 + msgp.Int64Size + 14 + msgp.MapHeaderSize
+	s = 1 + 10 + msgp.TimeSize + 6 + msgp.IntSize + 15 + msgp.Int64Size + 15 + msgp.Int64Size + 16 + msgp.MapHeaderSize
 	if z.LastMinuteAPI != nil {
 		for za0001, za0002 := range z.LastMinuteAPI {
 			_ = za0002
 			s += msgp.StringPrefixSize + len(za0001) + za0002.Msgsize()
 		}
+	}
+	s += 14
+	if z.LastMinuteAgg == nil {
+		s += msgp.NilSize
+	} else {
+		s += z.LastMinuteAgg.Msgsize()
 	}
 	s += 12
 	if z.LastHourAPI == nil {
@@ -667,7 +666,7 @@ func (z *APIMetrics) Msgsize() (s int) {
 	} else {
 		s += z.LastDayAPI.Msgsize()
 	}
-	s += 12 + z.SinceStart.Msgsize() + 18 + msgp.Uint64Size + 19 + msgp.Uint64Size
+	s += 12 + z.SinceStart.Msgsize()
 	return
 }
 
@@ -8198,7 +8197,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 		err = msgp.WrapError(err)
 		return
 	}
-	var zb0001Mask uint16 /* 15 bits */
+	var zb0001Mask uint16 /* 16 bits */
 	_ = zb0001Mask
 	for zb0001 > 0 {
 		zb0001--
@@ -8327,6 +8326,13 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 				return
 			}
 			zb0001Mask |= 0x40
+		case "bitrot_drives":
+			z.BitrotDrives, err = dc.ReadInt()
+			if err != nil {
+				err = msgp.WrapError(err, "BitrotDrives")
+				return
+			}
+			zb0001Mask |= 0x80
 		case "healingInfo":
 			if dc.IsNil() {
 				err = dc.ReadNil()
@@ -8345,7 +8351,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x80
+			zb0001Mask |= 0x100
 		case "cache":
 			if dc.IsNil() {
 				err = dc.ReadNil()
@@ -8364,7 +8370,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x100
+			zb0001Mask |= 0x200
 		case "space":
 			err = z.Space.DecodeMsg(dc)
 			if err != nil {
@@ -8399,7 +8405,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 				}
 				z.LifetimeOps[za0003] = za0004
 			}
-			zb0001Mask |= 0x200
+			zb0001Mask |= 0x400
 		case "last_minute":
 			var zb0004 uint32
 			zb0004, err = dc.ReadMapHeader()
@@ -8428,7 +8434,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 				}
 				z.LastMinute[za0005] = za0006
 			}
-			zb0001Mask |= 0x400
+			zb0001Mask |= 0x800
 		case "last_day":
 			var zb0005 uint32
 			zb0005, err = dc.ReadMapHeader()
@@ -8457,7 +8463,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 				}
 				z.LastDaySegmented[za0007] = za0008
 			}
-			zb0001Mask |= 0x800
+			zb0001Mask |= 0x1000
 		case "iostats":
 			if dc.IsNil() {
 				err = dc.ReadNil()
@@ -8476,7 +8482,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x1000
+			zb0001Mask |= 0x2000
 		case "io_min":
 			err = z.IOStatsMinute.DecodeMsg(dc)
 			if err != nil {
@@ -8513,14 +8519,14 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x2000
+			zb0001Mask |= 0x4000
 		case "fsType":
 			z.FSType, err = dc.ReadString()
 			if err != nil {
 				err = msgp.WrapError(err, "FSType")
 				return
 			}
-			zb0001Mask |= 0x4000
+			zb0001Mask |= 0x8000
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -8530,7 +8536,7 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 		}
 	}
 	// Clear omitted fields.
-	if zb0001Mask != 0x7fff {
+	if zb0001Mask != 0xffff {
 		if (zb0001Mask & 0x1) == 0 {
 			z.DiskIdx = nil
 		}
@@ -8553,27 +8559,30 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 			z.Healing = 0
 		}
 		if (zb0001Mask & 0x80) == 0 {
-			z.HealingInfo = nil
+			z.BitrotDrives = 0
 		}
 		if (zb0001Mask & 0x100) == 0 {
-			z.Cache = nil
+			z.HealingInfo = nil
 		}
 		if (zb0001Mask & 0x200) == 0 {
-			z.LifetimeOps = nil
+			z.Cache = nil
 		}
 		if (zb0001Mask & 0x400) == 0 {
-			z.LastMinute = nil
+			z.LifetimeOps = nil
 		}
 		if (zb0001Mask & 0x800) == 0 {
-			z.LastDaySegmented = nil
+			z.LastMinute = nil
 		}
 		if (zb0001Mask & 0x1000) == 0 {
-			z.IOStats = nil
+			z.LastDaySegmented = nil
 		}
 		if (zb0001Mask & 0x2000) == 0 {
-			z.SMART = nil
+			z.IOStats = nil
 		}
 		if (zb0001Mask & 0x4000) == 0 {
+			z.SMART = nil
+		}
+		if (zb0001Mask & 0x8000) == 0 {
 			z.FSType = ""
 		}
 	}
@@ -8583,8 +8592,8 @@ func (z *DiskMetric) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 	// check for omitted fields
-	zb0001Len := uint32(21)
-	var zb0001Mask uint32 /* 21 bits */
+	zb0001Len := uint32(22)
+	var zb0001Mask uint32 /* 22 bits */
 	_ = zb0001Mask
 	if z.DiskIdx == nil {
 		zb0001Len--
@@ -8614,37 +8623,41 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 		zb0001Len--
 		zb0001Mask |= 0x100
 	}
-	if z.HealingInfo == nil {
+	if z.BitrotDrives == 0 {
 		zb0001Len--
 		zb0001Mask |= 0x200
 	}
-	if z.Cache == nil {
+	if z.HealingInfo == nil {
 		zb0001Len--
 		zb0001Mask |= 0x400
 	}
-	if z.LifetimeOps == nil {
+	if z.Cache == nil {
 		zb0001Len--
-		zb0001Mask |= 0x1000
+		zb0001Mask |= 0x800
 	}
-	if z.LastMinute == nil {
+	if z.LifetimeOps == nil {
 		zb0001Len--
 		zb0001Mask |= 0x2000
 	}
-	if z.LastDaySegmented == nil {
+	if z.LastMinute == nil {
 		zb0001Len--
 		zb0001Mask |= 0x4000
 	}
-	if z.IOStats == nil {
+	if z.LastDaySegmented == nil {
 		zb0001Len--
 		zb0001Mask |= 0x8000
 	}
+	if z.IOStats == nil {
+		zb0001Len--
+		zb0001Mask |= 0x10000
+	}
 	if z.SMART == nil {
 		zb0001Len--
-		zb0001Mask |= 0x80000
+		zb0001Mask |= 0x100000
 	}
 	if z.FSType == "" {
 		zb0001Len--
-		zb0001Mask |= 0x100000
+		zb0001Mask |= 0x200000
 	}
 	// variable map header, size zb0001Len
 	err = en.WriteMapHeader(zb0001Len)
@@ -8792,6 +8805,18 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			}
 		}
 		if (zb0001Mask & 0x200) == 0 { // if not omitted
+			// write "bitrot_drives"
+			err = en.Append(0xad, 0x62, 0x69, 0x74, 0x72, 0x6f, 0x74, 0x5f, 0x64, 0x72, 0x69, 0x76, 0x65, 0x73)
+			if err != nil {
+				return
+			}
+			err = en.WriteInt(z.BitrotDrives)
+			if err != nil {
+				err = msgp.WrapError(err, "BitrotDrives")
+				return
+			}
+		}
+		if (zb0001Mask & 0x400) == 0 { // if not omitted
 			// write "healingInfo"
 			err = en.Append(0xab, 0x68, 0x65, 0x61, 0x6c, 0x69, 0x6e, 0x67, 0x49, 0x6e, 0x66, 0x6f)
 			if err != nil {
@@ -8810,7 +8835,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x400) == 0 { // if not omitted
+		if (zb0001Mask & 0x800) == 0 { // if not omitted
 			// write "cache"
 			err = en.Append(0xa5, 0x63, 0x61, 0x63, 0x68, 0x65)
 			if err != nil {
@@ -8839,7 +8864,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			err = msgp.WrapError(err, "Space")
 			return
 		}
-		if (zb0001Mask & 0x1000) == 0 { // if not omitted
+		if (zb0001Mask & 0x2000) == 0 { // if not omitted
 			// write "lifetime_ops"
 			err = en.Append(0xac, 0x6c, 0x69, 0x66, 0x65, 0x74, 0x69, 0x6d, 0x65, 0x5f, 0x6f, 0x70, 0x73)
 			if err != nil {
@@ -8863,7 +8888,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x2000) == 0 { // if not omitted
+		if (zb0001Mask & 0x4000) == 0 { // if not omitted
 			// write "last_minute"
 			err = en.Append(0xab, 0x6c, 0x61, 0x73, 0x74, 0x5f, 0x6d, 0x69, 0x6e, 0x75, 0x74, 0x65)
 			if err != nil {
@@ -8887,7 +8912,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x4000) == 0 { // if not omitted
+		if (zb0001Mask & 0x8000) == 0 { // if not omitted
 			// write "last_day"
 			err = en.Append(0xa8, 0x6c, 0x61, 0x73, 0x74, 0x5f, 0x64, 0x61, 0x79)
 			if err != nil {
@@ -8911,7 +8936,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x8000) == 0 { // if not omitted
+		if (zb0001Mask & 0x10000) == 0 { // if not omitted
 			// write "iostats"
 			err = en.Append(0xa7, 0x69, 0x6f, 0x73, 0x74, 0x61, 0x74, 0x73)
 			if err != nil {
@@ -8960,7 +8985,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 			err = msgp.WrapError(err, "IOHour")
 			return
 		}
-		if (zb0001Mask & 0x80000) == 0 { // if not omitted
+		if (zb0001Mask & 0x100000) == 0 { // if not omitted
 			// write "smart"
 			err = en.Append(0xa5, 0x73, 0x6d, 0x61, 0x72, 0x74)
 			if err != nil {
@@ -8979,7 +9004,7 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x100000) == 0 { // if not omitted
+		if (zb0001Mask & 0x200000) == 0 { // if not omitted
 			// write "fsType"
 			err = en.Append(0xa6, 0x66, 0x73, 0x54, 0x79, 0x70, 0x65)
 			if err != nil {
@@ -8999,8 +9024,8 @@ func (z *DiskMetric) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// check for omitted fields
-	zb0001Len := uint32(21)
-	var zb0001Mask uint32 /* 21 bits */
+	zb0001Len := uint32(22)
+	var zb0001Mask uint32 /* 22 bits */
 	_ = zb0001Mask
 	if z.DiskIdx == nil {
 		zb0001Len--
@@ -9030,37 +9055,41 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 		zb0001Len--
 		zb0001Mask |= 0x100
 	}
-	if z.HealingInfo == nil {
+	if z.BitrotDrives == 0 {
 		zb0001Len--
 		zb0001Mask |= 0x200
 	}
-	if z.Cache == nil {
+	if z.HealingInfo == nil {
 		zb0001Len--
 		zb0001Mask |= 0x400
 	}
-	if z.LifetimeOps == nil {
+	if z.Cache == nil {
 		zb0001Len--
-		zb0001Mask |= 0x1000
+		zb0001Mask |= 0x800
 	}
-	if z.LastMinute == nil {
+	if z.LifetimeOps == nil {
 		zb0001Len--
 		zb0001Mask |= 0x2000
 	}
-	if z.LastDaySegmented == nil {
+	if z.LastMinute == nil {
 		zb0001Len--
 		zb0001Mask |= 0x4000
 	}
-	if z.IOStats == nil {
+	if z.LastDaySegmented == nil {
 		zb0001Len--
 		zb0001Mask |= 0x8000
 	}
+	if z.IOStats == nil {
+		zb0001Len--
+		zb0001Mask |= 0x10000
+	}
 	if z.SMART == nil {
 		zb0001Len--
-		zb0001Mask |= 0x80000
+		zb0001Mask |= 0x100000
 	}
 	if z.FSType == "" {
 		zb0001Len--
-		zb0001Mask |= 0x100000
+		zb0001Mask |= 0x200000
 	}
 	// variable map header, size zb0001Len
 	o = msgp.AppendMapHeader(o, zb0001Len)
@@ -9125,6 +9154,11 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			o = msgp.AppendInt(o, z.Healing)
 		}
 		if (zb0001Mask & 0x200) == 0 { // if not omitted
+			// string "bitrot_drives"
+			o = append(o, 0xad, 0x62, 0x69, 0x74, 0x72, 0x6f, 0x74, 0x5f, 0x64, 0x72, 0x69, 0x76, 0x65, 0x73)
+			o = msgp.AppendInt(o, z.BitrotDrives)
+		}
+		if (zb0001Mask & 0x400) == 0 { // if not omitted
 			// string "healingInfo"
 			o = append(o, 0xab, 0x68, 0x65, 0x61, 0x6c, 0x69, 0x6e, 0x67, 0x49, 0x6e, 0x66, 0x6f)
 			if z.HealingInfo == nil {
@@ -9137,7 +9171,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x400) == 0 { // if not omitted
+		if (zb0001Mask & 0x800) == 0 { // if not omitted
 			// string "cache"
 			o = append(o, 0xa5, 0x63, 0x61, 0x63, 0x68, 0x65)
 			if z.Cache == nil {
@@ -9157,7 +9191,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			err = msgp.WrapError(err, "Space")
 			return
 		}
-		if (zb0001Mask & 0x1000) == 0 { // if not omitted
+		if (zb0001Mask & 0x2000) == 0 { // if not omitted
 			// string "lifetime_ops"
 			o = append(o, 0xac, 0x6c, 0x69, 0x66, 0x65, 0x74, 0x69, 0x6d, 0x65, 0x5f, 0x6f, 0x70, 0x73)
 			o = msgp.AppendMapHeader(o, uint32(len(z.LifetimeOps)))
@@ -9170,7 +9204,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x2000) == 0 { // if not omitted
+		if (zb0001Mask & 0x4000) == 0 { // if not omitted
 			// string "last_minute"
 			o = append(o, 0xab, 0x6c, 0x61, 0x73, 0x74, 0x5f, 0x6d, 0x69, 0x6e, 0x75, 0x74, 0x65)
 			o = msgp.AppendMapHeader(o, uint32(len(z.LastMinute)))
@@ -9183,7 +9217,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x4000) == 0 { // if not omitted
+		if (zb0001Mask & 0x8000) == 0 { // if not omitted
 			// string "last_day"
 			o = append(o, 0xa8, 0x6c, 0x61, 0x73, 0x74, 0x5f, 0x64, 0x61, 0x79)
 			o = msgp.AppendMapHeader(o, uint32(len(z.LastDaySegmented)))
@@ -9196,7 +9230,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x8000) == 0 { // if not omitted
+		if (zb0001Mask & 0x10000) == 0 { // if not omitted
 			// string "iostats"
 			o = append(o, 0xa7, 0x69, 0x6f, 0x73, 0x74, 0x61, 0x74, 0x73)
 			if z.IOStats == nil {
@@ -9230,7 +9264,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 			err = msgp.WrapError(err, "IOHour")
 			return
 		}
-		if (zb0001Mask & 0x80000) == 0 { // if not omitted
+		if (zb0001Mask & 0x100000) == 0 { // if not omitted
 			// string "smart"
 			o = append(o, 0xa5, 0x73, 0x6d, 0x61, 0x72, 0x74)
 			if z.SMART == nil {
@@ -9243,7 +9277,7 @@ func (z *DiskMetric) MarshalMsg(b []byte) (o []byte, err error) {
 				}
 			}
 		}
-		if (zb0001Mask & 0x100000) == 0 { // if not omitted
+		if (zb0001Mask & 0x200000) == 0 { // if not omitted
 			// string "fsType"
 			o = append(o, 0xa6, 0x66, 0x73, 0x54, 0x79, 0x70, 0x65)
 			o = msgp.AppendString(o, z.FSType)
@@ -9262,7 +9296,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		err = msgp.WrapError(err)
 		return
 	}
-	var zb0001Mask uint16 /* 15 bits */
+	var zb0001Mask uint16 /* 16 bits */
 	_ = zb0001Mask
 	for zb0001 > 0 {
 		zb0001--
@@ -9388,6 +9422,13 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				return
 			}
 			zb0001Mask |= 0x40
+		case "bitrot_drives":
+			z.BitrotDrives, bts, err = msgp.ReadIntBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "BitrotDrives")
+				return
+			}
+			zb0001Mask |= 0x80
 		case "healingInfo":
 			if msgp.IsNil(bts) {
 				bts, err = msgp.ReadNilBytes(bts)
@@ -9405,7 +9446,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x80
+			zb0001Mask |= 0x100
 		case "cache":
 			if msgp.IsNil(bts) {
 				bts, err = msgp.ReadNilBytes(bts)
@@ -9423,7 +9464,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x100
+			zb0001Mask |= 0x200
 		case "space":
 			bts, err = z.Space.UnmarshalMsg(bts)
 			if err != nil {
@@ -9458,7 +9499,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				}
 				z.LifetimeOps[za0003] = za0004
 			}
-			zb0001Mask |= 0x200
+			zb0001Mask |= 0x400
 		case "last_minute":
 			var zb0004 uint32
 			zb0004, bts, err = msgp.ReadMapHeaderBytes(bts)
@@ -9487,7 +9528,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				}
 				z.LastMinute[za0005] = za0006
 			}
-			zb0001Mask |= 0x400
+			zb0001Mask |= 0x800
 		case "last_day":
 			var zb0005 uint32
 			zb0005, bts, err = msgp.ReadMapHeaderBytes(bts)
@@ -9516,7 +9557,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				}
 				z.LastDaySegmented[za0007] = za0008
 			}
-			zb0001Mask |= 0x800
+			zb0001Mask |= 0x1000
 		case "iostats":
 			if msgp.IsNil(bts) {
 				bts, err = msgp.ReadNilBytes(bts)
@@ -9534,7 +9575,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x1000
+			zb0001Mask |= 0x2000
 		case "io_min":
 			bts, err = z.IOStatsMinute.UnmarshalMsg(bts)
 			if err != nil {
@@ -9570,14 +9611,14 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
-			zb0001Mask |= 0x2000
+			zb0001Mask |= 0x4000
 		case "fsType":
 			z.FSType, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "FSType")
 				return
 			}
-			zb0001Mask |= 0x4000
+			zb0001Mask |= 0x8000
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -9587,7 +9628,7 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 	}
 	// Clear omitted fields.
-	if zb0001Mask != 0x7fff {
+	if zb0001Mask != 0xffff {
 		if (zb0001Mask & 0x1) == 0 {
 			z.DiskIdx = nil
 		}
@@ -9610,27 +9651,30 @@ func (z *DiskMetric) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			z.Healing = 0
 		}
 		if (zb0001Mask & 0x80) == 0 {
-			z.HealingInfo = nil
+			z.BitrotDrives = 0
 		}
 		if (zb0001Mask & 0x100) == 0 {
-			z.Cache = nil
+			z.HealingInfo = nil
 		}
 		if (zb0001Mask & 0x200) == 0 {
-			z.LifetimeOps = nil
+			z.Cache = nil
 		}
 		if (zb0001Mask & 0x400) == 0 {
-			z.LastMinute = nil
+			z.LifetimeOps = nil
 		}
 		if (zb0001Mask & 0x800) == 0 {
-			z.LastDaySegmented = nil
+			z.LastMinute = nil
 		}
 		if (zb0001Mask & 0x1000) == 0 {
-			z.IOStats = nil
+			z.LastDaySegmented = nil
 		}
 		if (zb0001Mask & 0x2000) == 0 {
-			z.SMART = nil
+			z.IOStats = nil
 		}
 		if (zb0001Mask & 0x4000) == 0 {
+			z.SMART = nil
+		}
+		if (zb0001Mask & 0x8000) == 0 {
 			z.FSType = ""
 		}
 	}
@@ -9665,7 +9709,7 @@ func (z *DiskMetric) Msgsize() (s int) {
 			s += msgp.StringPrefixSize + len(za0001) + msgp.IntSize
 		}
 	}
-	s += 8 + msgp.IntSize + 8 + msgp.IntSize + 8 + msgp.IntSize + 12
+	s += 8 + msgp.IntSize + 8 + msgp.IntSize + 8 + msgp.IntSize + 14 + msgp.IntSize + 12
 	if z.HealingInfo == nil {
 		s += msgp.NilSize
 	} else {
@@ -11593,7 +11637,7 @@ func (z *LastWindowAPIData) DecodeMsg(dc *msgp.Reader) (err error) {
 		err = msgp.WrapError(err)
 		return
 	}
-	var zb0001Mask uint8 /* 5 bits */
+	var zb0001Mask uint8 /* 7 bits */
 	_ = zb0001Mask
 	for zb0001 > 0 {
 		zb0001--
@@ -11660,6 +11704,20 @@ func (z *LastWindowAPIData) DecodeMsg(dc *msgp.Reader) (err error) {
 				return
 			}
 			zb0001Mask |= 0x10
+		case "requestsAvg":
+			z.RequestsAvg, err = dc.ReadInt64()
+			if err != nil {
+				err = msgp.WrapError(err, "RequestsAvg")
+				return
+			}
+			zb0001Mask |= 0x20
+		case "requestsMax":
+			z.RequestsMax, err = dc.ReadInt64()
+			if err != nil {
+				err = msgp.WrapError(err, "RequestsMax")
+				return
+			}
+			zb0001Mask |= 0x40
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -11669,7 +11727,7 @@ func (z *LastWindowAPIData) DecodeMsg(dc *msgp.Reader) (err error) {
 		}
 	}
 	// Clear omitted fields.
-	if zb0001Mask != 0x1f {
+	if zb0001Mask != 0x7f {
 		if (zb0001Mask & 0x1) == 0 {
 			z.ByAPI = nil
 		}
@@ -11685,6 +11743,12 @@ func (z *LastWindowAPIData) DecodeMsg(dc *msgp.Reader) (err error) {
 		if (zb0001Mask & 0x10) == 0 {
 			z.OutBytesMax = 0
 		}
+		if (zb0001Mask & 0x20) == 0 {
+			z.RequestsAvg = 0
+		}
+		if (zb0001Mask & 0x40) == 0 {
+			z.RequestsMax = 0
+		}
 	}
 	return
 }
@@ -11692,8 +11756,8 @@ func (z *LastWindowAPIData) DecodeMsg(dc *msgp.Reader) (err error) {
 // EncodeMsg implements msgp.Encodable
 func (z *LastWindowAPIData) EncodeMsg(en *msgp.Writer) (err error) {
 	// check for omitted fields
-	zb0001Len := uint32(5)
-	var zb0001Mask uint8 /* 5 bits */
+	zb0001Len := uint32(7)
+	var zb0001Mask uint8 /* 7 bits */
 	_ = zb0001Mask
 	if z.ByAPI == nil {
 		zb0001Len--
@@ -11714,6 +11778,14 @@ func (z *LastWindowAPIData) EncodeMsg(en *msgp.Writer) (err error) {
 	if z.OutBytesMax == 0 {
 		zb0001Len--
 		zb0001Mask |= 0x10
+	}
+	if z.RequestsAvg == 0 {
+		zb0001Len--
+		zb0001Mask |= 0x20
+	}
+	if z.RequestsMax == 0 {
+		zb0001Len--
+		zb0001Mask |= 0x40
 	}
 	// variable map header, size zb0001Len
 	err = en.Append(0x80 | uint8(zb0001Len))
@@ -11795,6 +11867,30 @@ func (z *LastWindowAPIData) EncodeMsg(en *msgp.Writer) (err error) {
 				return
 			}
 		}
+		if (zb0001Mask & 0x20) == 0 { // if not omitted
+			// write "requestsAvg"
+			err = en.Append(0xab, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x73, 0x41, 0x76, 0x67)
+			if err != nil {
+				return
+			}
+			err = en.WriteInt64(z.RequestsAvg)
+			if err != nil {
+				err = msgp.WrapError(err, "RequestsAvg")
+				return
+			}
+		}
+		if (zb0001Mask & 0x40) == 0 { // if not omitted
+			// write "requestsMax"
+			err = en.Append(0xab, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x73, 0x4d, 0x61, 0x78)
+			if err != nil {
+				return
+			}
+			err = en.WriteInt64(z.RequestsMax)
+			if err != nil {
+				err = msgp.WrapError(err, "RequestsMax")
+				return
+			}
+		}
 	}
 	return
 }
@@ -11803,8 +11899,8 @@ func (z *LastWindowAPIData) EncodeMsg(en *msgp.Writer) (err error) {
 func (z *LastWindowAPIData) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// check for omitted fields
-	zb0001Len := uint32(5)
-	var zb0001Mask uint8 /* 5 bits */
+	zb0001Len := uint32(7)
+	var zb0001Mask uint8 /* 7 bits */
 	_ = zb0001Mask
 	if z.ByAPI == nil {
 		zb0001Len--
@@ -11825,6 +11921,14 @@ func (z *LastWindowAPIData) MarshalMsg(b []byte) (o []byte, err error) {
 	if z.OutBytesMax == 0 {
 		zb0001Len--
 		zb0001Mask |= 0x10
+	}
+	if z.RequestsAvg == 0 {
+		zb0001Len--
+		zb0001Mask |= 0x20
+	}
+	if z.RequestsMax == 0 {
+		zb0001Len--
+		zb0001Mask |= 0x40
 	}
 	// variable map header, size zb0001Len
 	o = append(o, 0x80|uint8(zb0001Len))
@@ -11864,6 +11968,16 @@ func (z *LastWindowAPIData) MarshalMsg(b []byte) (o []byte, err error) {
 			o = append(o, 0xab, 0x6f, 0x75, 0x74, 0x42, 0x79, 0x74, 0x65, 0x73, 0x4d, 0x61, 0x78)
 			o = msgp.AppendUint64(o, z.OutBytesMax)
 		}
+		if (zb0001Mask & 0x20) == 0 { // if not omitted
+			// string "requestsAvg"
+			o = append(o, 0xab, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x73, 0x41, 0x76, 0x67)
+			o = msgp.AppendInt64(o, z.RequestsAvg)
+		}
+		if (zb0001Mask & 0x40) == 0 { // if not omitted
+			// string "requestsMax"
+			o = append(o, 0xab, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x73, 0x4d, 0x61, 0x78)
+			o = msgp.AppendInt64(o, z.RequestsMax)
+		}
 	}
 	return
 }
@@ -11878,7 +11992,7 @@ func (z *LastWindowAPIData) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		err = msgp.WrapError(err)
 		return
 	}
-	var zb0001Mask uint8 /* 5 bits */
+	var zb0001Mask uint8 /* 7 bits */
 	_ = zb0001Mask
 	for zb0001 > 0 {
 		zb0001--
@@ -11945,6 +12059,20 @@ func (z *LastWindowAPIData) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				return
 			}
 			zb0001Mask |= 0x10
+		case "requestsAvg":
+			z.RequestsAvg, bts, err = msgp.ReadInt64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "RequestsAvg")
+				return
+			}
+			zb0001Mask |= 0x20
+		case "requestsMax":
+			z.RequestsMax, bts, err = msgp.ReadInt64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "RequestsMax")
+				return
+			}
+			zb0001Mask |= 0x40
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -11954,7 +12082,7 @@ func (z *LastWindowAPIData) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 	}
 	// Clear omitted fields.
-	if zb0001Mask != 0x1f {
+	if zb0001Mask != 0x7f {
 		if (zb0001Mask & 0x1) == 0 {
 			z.ByAPI = nil
 		}
@@ -11970,6 +12098,12 @@ func (z *LastWindowAPIData) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		if (zb0001Mask & 0x10) == 0 {
 			z.OutBytesMax = 0
 		}
+		if (zb0001Mask & 0x20) == 0 {
+			z.RequestsAvg = 0
+		}
+		if (zb0001Mask & 0x40) == 0 {
+			z.RequestsMax = 0
+		}
 	}
 	o = bts
 	return
@@ -11984,7 +12118,7 @@ func (z *LastWindowAPIData) Msgsize() (s int) {
 			s += msgp.StringPrefixSize + len(za0001) + (*Segmented[APIStats, *APIStats])(&za0002).Msgsize()
 		}
 	}
-	s += 11 + msgp.Uint64Size + 11 + msgp.Uint64Size + 12 + msgp.Uint64Size + 12 + msgp.Uint64Size
+	s += 11 + msgp.Uint64Size + 11 + msgp.Uint64Size + 12 + msgp.Uint64Size + 12 + msgp.Uint64Size + 12 + msgp.Int64Size + 12 + msgp.Int64Size
 	return
 }
 
