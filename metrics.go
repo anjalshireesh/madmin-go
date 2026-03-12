@@ -830,6 +830,14 @@ type DiskMetric struct {
 	// the last minute.
 	BitrotDrives int `json:"bitrot_drives,omitempty"`
 
+	// ErrorsLastHour is the total availability errors and timeouts across all
+	// operations in approximately the last hour.
+	ErrorsLastHour int64 `json:"errors_hour,omitempty"`
+
+	// ErrorsLastDay is the total availability errors and timeouts across all
+	// operations in the last 24 hours.
+	ErrorsLastDay int64 `json:"errors_day,omitempty"`
+
 	// HealingInfo gives us a high level overview of the drives healing state
 	HealingInfo *DriveHealInfo `json:"healingInfo,omitempty"`
 
@@ -975,6 +983,8 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 	d.Offline += other.Offline
 	d.Healing += other.Healing
 	d.BitrotDrives += other.BitrotDrives
+	d.ErrorsLastHour += other.ErrorsLastHour
+	d.ErrorsLastDay += other.ErrorsLastDay
 	d.Hanging += other.Hanging
 	if other.Cache != nil {
 		if d.Cache == nil {
