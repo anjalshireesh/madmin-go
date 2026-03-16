@@ -575,6 +575,9 @@ type DiskIOStats struct {
 	BitrotDetected uint64 `json:"bitrot_detected,omitempty"`
 	BitrotHealed   uint64 `json:"bitrot_healed,omitempty"`
 
+	// Errors is the total availability errors and timeouts in this window.
+	Errors int64 `json:"errors,omitempty"`
+
 	// Pre-computed rate fields. Not summed across drives; derived from raw counters.
 	ReadsPerSec    float64 `json:"reads_per_sec,omitempty"`
 	ReadsKBPerSec  float64 `json:"reads_kb_per_sec,omitempty"`
@@ -713,6 +716,7 @@ func (d *DiskIOStats) Add(other *DiskIOStats) {
 	d.FlushTicks += other.FlushTicks
 	d.BitrotDetected += other.BitrotDetected
 	d.BitrotHealed += other.BitrotHealed
+	d.Errors += other.Errors
 }
 
 type (
@@ -736,12 +740,19 @@ type DiskIOWindow struct {
 
 	// Max contains peak rates across all segments.
 	Max DiskIOStats `json:"max"`
+
+	// Errors is the total availability errors and timeouts in this window.
+	Errors int64 `json:"errors,omitempty"`
 }
 
 // Add merges other into d. Segments are merged by time-aligned index with raw
 // counters summed. Avg raw counters are summed. Max rate fields are element-wise maxed.
 func (d *DiskIOWindow) Add(other *DiskIOWindow) {
-	if other == nil || len(other.Segments) == 0 {
+	if other == nil {
+		return
+	}
+	d.Errors += other.Errors
+	if len(other.Segments) == 0 {
 		return
 	}
 	d.Avg.Add(&other.Avg)
@@ -830,14 +841,6 @@ type DiskMetric struct {
 	// the last minute.
 	BitrotDrives int `json:"bitrot_drives,omitempty"`
 
-	// ErrorsLastHour is the total availability errors and timeouts across all
-	// operations in approximately the last hour.
-	ErrorsLastHour int64 `json:"errors_hour,omitempty"`
-
-	// ErrorsLastDay is the total availability errors and timeouts across all
-	// operations in the last 24 hours.
-	ErrorsLastDay int64 `json:"errors_day,omitempty"`
-
 	// HealingInfo gives us a high level overview of the drives healing state
 	HealingInfo *DriveHealInfo `json:"healingInfo,omitempty"`
 
@@ -855,6 +858,9 @@ type DiskMetric struct {
 
 	// LastDaySegmented contains the segmented metrics for the last day.
 	LastDaySegmented map[string]SegmentedDiskActions `json:"last_day,omitempty"`
+
+	// LastHourSegmented contains the segmented metrics for the last hour.
+	LastHourSegmented map[string]SegmentedDiskActions `json:"last_hour,omitempty"`
 
 	// IO stats.
 	// Deprecated: use io_min, io_day instead.
@@ -949,6 +955,10 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 			d.LastDaySegmented = make(map[string]SegmentedDiskActions, len(other.LastDaySegmented))
 			maps.Copy(d.LastDaySegmented, other.LastDaySegmented)
 		}
+		if other.LastHourSegmented != nil {
+			d.LastHourSegmented = make(map[string]SegmentedDiskActions, len(other.LastHourSegmented))
+			maps.Copy(d.LastHourSegmented, other.LastHourSegmented)
+		}
 		return
 	}
 	if d.CollectedAt.Before(other.CollectedAt) {
@@ -983,8 +993,6 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 	d.Offline += other.Offline
 	d.Healing += other.Healing
 	d.BitrotDrives += other.BitrotDrives
-	d.ErrorsLastHour += other.ErrorsLastHour
-	d.ErrorsLastDay += other.ErrorsLastDay
 	d.Hanging += other.Hanging
 	if other.Cache != nil {
 		if d.Cache == nil {
@@ -1020,6 +1028,16 @@ func (d *DiskMetric) Merge(other *DiskMetric) {
 		t.Add(&v)
 		d.LastDaySegmented[k] = t
 	}
+
+	if len(other.LastHourSegmented) > 0 && d.LastHourSegmented == nil {
+		d.LastHourSegmented = make(map[string]SegmentedDiskActions, len(other.LastHourSegmented))
+	}
+	for k, v := range other.LastHourSegmented {
+		t := d.LastHourSegmented[k]
+		t.Add(&v)
+		d.LastHourSegmented[k] = t
+	}
+
 	if other.IOStats != nil {
 		if d.IOStats == nil {
 			d.IOStats = new(DiskIOStatsLegacy)
